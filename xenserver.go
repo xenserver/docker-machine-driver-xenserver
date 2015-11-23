@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codegangsta/cli"
-	"github.com/docker/machine/drivers"
-	"github.com/docker/machine/log"
-	"github.com/docker/machine/ssh"
-	"github.com/docker/machine/state"
-	"github.com/docker/machine/utils"
+	"github.com/docker/machine/libmachine/drivers"
+	"github.com/docker/machine/libmachine/log"
+	"github.com/docker/machine/libmachine/ssh"
+	"github.com/docker/machine/libmachine/state"
+	"github.com/docker/machine/libmachine/mcnutils"
+	"github.com/docker/machine/libmachine/mcnflag"
 	"github.com/nilshell/xmlrpc"
 	"golang.org/x/net/context"
 
@@ -36,9 +36,8 @@ const (
 )
 
 type Driver struct {
-	MachineName    string
-	SSHUser        string
-	SSHPort        int
+        *drivers.BaseDriver
+
 	Server         string
 	Username       string
 	Password       string
@@ -49,92 +48,81 @@ type Driver struct {
 	SR             string
 	Network        string
 	Host           string
-	StorePath      string
 	ISO            string
 	TAR            string
 	UploadTimeout  uint
 	WaitTimeout    uint
 	CaCertPath     string
 	PrivateKeyPath string
-	SwarmMaster    bool
-	SwarmHost      string
-	SwarmDiscovery string
 
 	xenAPIClient *XenAPIClient
 }
 
-func init() {
-	drivers.Register("xenserver", &drivers.RegisteredDriver{
-		New:            NewDriver,
-		GetCreateFlags: GetCreateFlags,
-	})
-}
-
 // GetCreateFlags registers the flags this driver adds to
 // "docker hosts create"
-func GetCreateFlags() []cli.Flag {
-	return []cli.Flag{
-		cli.StringFlag{
+func (d *Driver) GetCreateFlags() []mcnflag.Flag {
+	return []mcnflag.Flag{
+		mcnflag.StringFlag{
 			EnvVar: "XENSERVER_SERVER",
 			Name:   "xenserver-server",
 			Usage:  "XenServer server hostname/IP for docker VM",
 		},
-		cli.StringFlag{
+		mcnflag.StringFlag{
 			EnvVar: "XENSERVER_USERNAME",
 			Name:   "xenserver-username",
 			Usage:  "XenServer username",
 		},
-		cli.StringFlag{
+		mcnflag.StringFlag{
 			EnvVar: "XENSERVER_PASSWORD",
 			Name:   "xenserver-password",
 			Usage:  "XenServer password",
 		},
-		cli.StringFlag{
+		mcnflag.StringFlag{
 			EnvVar: "XENSERVER_BOOT2DOCKER_URL",
 			Name:   "xenserver-boot2docker-url",
 			Usage:  "XenServer URL for boot2docker image",
 			Value:  isoOnlineURL,
 		},
-		cli.IntFlag{
+		mcnflag.IntFlag{
 			EnvVar: "XENSERVER_VCPU_COUNT",
 			Name:   "xenserver-vcpu-count",
 			Usage:  "XenServer vCPU number for docker VM",
 			Value:  1,
 		},
-		cli.IntFlag{
+		mcnflag.IntFlag{
 			EnvVar: "XENSERVER_MEMORY_SIZE",
 			Name:   "xenserver-memory-size",
 			Usage:  "XenServer size of memory for docker VM (in MB)",
 			Value:  1024,
 		},
-		cli.IntFlag{
+		mcnflag.IntFlag{
 			EnvVar: "XENSERVER_DISK_SIZE",
 			Name:   "xenserver-disk-size",
 			Usage:  "XenServer size of disk for docker VM (in MB)",
 			Value:  5120,
 		},
-		cli.StringFlag{
+		mcnflag.StringFlag{
 			EnvVar: "XENSERVER_SR_LABEL",
 			Name:   "xenserver-sr-label",
 			Usage:  "XenServer SR label where the docker VM will be attached",
 		},
-		cli.StringFlag{
+		mcnflag.StringFlag{
 			EnvVar: "XENSERVER_NETWORK_LABEL",
 			Name:   "xenserver-network-label",
 			Usage:  "XenServer network label where the docker VM will be attached",
 		},
-		cli.StringFlag{
+		mcnflag.StringFlag{
 			EnvVar: "XENSERVER_HOST_LABEL",
 			Name:   "xenserver-host-label",
 			Usage:  "XenServer host label where the docker VM will be run",
 		},
-		cli.IntFlag{
+		mcnflag.IntFlag{
 			EnvVar: "XENSERVER_UPLOAD_TIMEOUT",
 			Name:   "xenserver-upload-timeout",
 			Usage:  "XenServer upload VDI timeout(seconds)",
 			Value:  5 * 60,
 		},
-		cli.IntFlag{
+		mcnflag.IntFlag{
 			EnvVar: "XENSERVER_WAIT_TIMEOUT",
 			Name:   "xenserver-wait-timeout",
 			Usage:  "XenServer wait VM start timeout(seconds)",
@@ -143,16 +131,8 @@ func GetCreateFlags() []cli.Flag {
 	}
 }
 
-func NewDriver(machineName string, storePath string, caCert string, privateKey string) (drivers.Driver, error) {
-	return &Driver{MachineName: machineName, StorePath: storePath, CaCertPath: caCert, PrivateKeyPath: privateKey}, nil
-}
-
-func (d *Driver) AuthorizePort(ports []*drivers.Port) error {
-	return nil
-}
-
-func (d *Driver) DeauthorizePort(ports []*drivers.Port) error {
-	return nil
+func NewDriver() *Driver {
+	return &Driver{}
 }
 
 func (d *Driver) GetMachineName() string {
@@ -318,12 +298,12 @@ func (d *Driver) Create() error {
 
 	// Download boot2docker ISO from Internet
 	var isoURL string
-	b2dutils := utils.NewB2dUtils("", "")
+	b2dutils := mcnutils.NewB2dUtils(d.StorePath)
 
 	if d.Boot2DockerURL != "" {
 		isoURL = d.Boot2DockerURL
 	} else {
-		isoURL, err = b2dutils.GetLatestBoot2DockerReleaseURL()
+		isoURL, err = b2dutils.GetLatestBoot2DockerReleaseURL("")
 		if err != nil {
 			log.Errorf("Unable to check for the latest release: %s", err)
 			return err
@@ -606,8 +586,8 @@ func (d *Driver) wait(timeout time.Duration) (err error) {
 		}
 
 		addr := fmt.Sprintf("%s:%d", ip, port)
-		log.Infof("Got VM address(%v), Now waiting for SSH", addr)
-		out <- ssh.WaitForTCP(addr)
+		log.Infof("Got VM address(%v), Now (not) waiting for SSH", addr)
+//		out <- ssh.WaitForTCP(addr)
 	}(ctx, out)
 
 	select {
