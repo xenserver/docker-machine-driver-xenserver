@@ -16,10 +16,10 @@ import (
 
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
+	"github.com/docker/machine/libmachine/mcnflag"
+	"github.com/docker/machine/libmachine/mcnutils"
 	"github.com/docker/machine/libmachine/ssh"
 	"github.com/docker/machine/libmachine/state"
-	"github.com/docker/machine/libmachine/mcnutils"
-	"github.com/docker/machine/libmachine/mcnflag"
 	"github.com/nilshell/xmlrpc"
 	"golang.org/x/net/context"
 
@@ -36,7 +36,7 @@ const (
 )
 
 type Driver struct {
-        *drivers.BaseDriver
+	*drivers.BaseDriver
 
 	Server         string
 	Username       string
@@ -587,7 +587,7 @@ func (d *Driver) wait(timeout time.Duration) (err error) {
 
 		addr := fmt.Sprintf("%s:%d", ip, port)
 		log.Infof("Got VM address(%v), Now (not) waiting for SSH", addr)
-//		out <- ssh.WaitForTCP(addr)
+		//		out <- ssh.WaitForTCP(addr)
 	}(ctx, out)
 
 	select {
