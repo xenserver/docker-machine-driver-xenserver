@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/jonludlam/docker-machine-xenserver"
 	"github.com/docker/machine/libmachine/drivers/plugin"
+	"github.com/xenserver/docker-machine-driver-xenserver"
 )
 
 func main() {
