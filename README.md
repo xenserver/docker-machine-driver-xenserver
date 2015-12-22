@@ -1,16 +1,23 @@
 [![Build Status](https://travis-ci.org/xenserver/docker-machine-driver-xenserver.svg?branch=master)](https://travis-ci.org/xenserver/docker-machine-driver-xenserver)
 
 # docker-machine-driver-xenserver
-XenServer driver for Docker Machine
+This is the XenServer driver plugin for Docker Machine. It allows the orchestration of machines on Citrix XenServer.
 
-Creates machines on a [XenServer](http://xenserver.org/) Virtual Infrastructure. Requires a working XenServer installation. The XenServer driver depends on [`go-xenserver-client`](https://github.com/xenserver/go-xenserver-client) (must be in path).
+# Installation
+Following the installation of Docker Machine, you can install the docker-machine-xenserver-driver:
+```bash
+got get github.com/xenserver/docker-machine-driver-xenserver
+cd $GOPATH/src/github.com/xenserver/docker-machine-driver-xenserver/bin
+make
+mv docker-machine-driver-xenserver $GOPATH/bin/
+```
 
-Options:
+# CLI Options:
 
  - `--xenserver-vcpu-count`: vCPU number for docker VM.
  - `--xenserver-memory-size`: Size of memory for Docker VM (in MB).
  - `--xenserver-boot2docker-url`: URL for boot2docker ISO image.
- - `--xenserver-server`: XenServer hostname/IP for docker VM.
+ - `--xenserver-server`: **required for create** XenServer hostname/IP for docker VM.
  - `--xenserver-disk-size`: Size of disk for Docker VM (in MB).
  - `--xenserver-username`: **required** XenServer Username.
  - `--xenserver-password`: **required** XenServer Password.
@@ -20,9 +27,7 @@ Options:
  - `--xenserver-upload-timeout`: Timeout uploading VDI.
  - `--xenserver-wait-timeout`: Timeout wating for VM start.
 
-The XenServer driver uses the latest boot2docker image.
-
-Environment variables and default values:
+# Environment variables and default values:
 
 | CLI option                        | Environment variable        | Default                      |
 |-----------------------------------|-----------------------------|------------------------------|
