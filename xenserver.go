@@ -27,7 +27,6 @@ import (
 )
 
 const (
-	isoOnlineURL        = "https://github.com/xenserver/boot2docker/releases/download/v1.7.0-xentools/boot2docker-v1.7.0-xentools.iso"
 	isoFilename         = "boot2docker.iso"
 	tarFilename         = "boot2docker.tar"
 	osTemplateLabelName = "Other install media"
@@ -81,7 +80,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			EnvVar: "XENSERVER_BOOT2DOCKER_URL",
 			Name:   "xenserver-boot2docker-url",
 			Usage:  "XenServer URL for boot2docker image",
-			Value:  isoOnlineURL,
 		},
 		mcnflag.IntFlag{
 			EnvVar: "XENSERVER_VCPU_COUNT",
