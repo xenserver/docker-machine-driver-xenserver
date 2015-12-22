@@ -1,16 +1,23 @@
 [![Build Status](https://travis-ci.org/xenserver/docker-machine-driver-xenserver.svg?branch=master)](https://travis-ci.org/xenserver/docker-machine-driver-xenserver)
 
 # docker-machine-driver-xenserver
-This is the XenServer driver plugin for Docker Machine. It allows the orchestration of machines on Citrix XenServer.
+This is the XenServer driver plugin for Docker Machine. It allows the
+orchestration of machines on Citrix XenServer.
 
-# Installation
-Following the installation of Docker Machine, you can install the docker-machine-xenserver-driver:
+# Installation from source
+Following the installation of Golang and Docker Machine, you can install the
+docker-machine-xenserver-driver:
 ```bash
-got get github.com/xenserver/docker-machine-driver-xenserver
-cd $GOPATH/src/github.com/xenserver/docker-machine-driver-xenserver/bin
-make
-mv docker-machine-driver-xenserver $GOPATH/bin/
+go install github.com/xenserver/docker-machine-driver-xenserver
 ```
+
+# Usage
+The usual Docker Machine commands apply:
+```bash
+docker-machine create -d xenserver --xenserver-server myip --xenserver-username myusername --xenserver-password mypassword mynewmmachine
+docker-machine env mynewmmachine
+```
+
 
 # CLI Options:
 
