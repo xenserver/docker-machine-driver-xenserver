@@ -3,4 +3,5 @@ sudo: false
 go:
   - release
 script:
+  - make
   - gofmtresult=$(gofmt -s -l .); if [[ -n $gofmtresult ]]; then echo -e "Please run \"gofmt -s -w .\" before committing for the below:\n$gofmtresult"; false; fi
