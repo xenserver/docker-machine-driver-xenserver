@@ -185,8 +185,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
-	d.ISO = filepath.Join(d.StorePath, isoFilename)
-	d.TAR = filepath.Join(d.StorePath, tarFilename)
+	d.ISO = d.ResolveStorePath(isoFilename)
+	d.TAR = d.ResolveStorePath(tarFilename)
 
 	return nil
 }
