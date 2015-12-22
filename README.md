@@ -8,7 +8,7 @@ orchestration of machines on Citrix XenServer.
 Following the installation of Golang and Docker Machine, you can install the
 docker-machine-xenserver-driver:
 ```bash
-go install github.com/xenserver/docker-machine-driver-xenserver
+go get github.com/xenserver/docker-machine-driver-xenserver
 ```
 
 # Usage
