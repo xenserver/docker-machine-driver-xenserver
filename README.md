@@ -4,6 +4,10 @@
 This is the XenServer driver plugin for Docker Machine. It allows the
 orchestration of machines on Citrix XenServer.
 
+# Installation from binary
+Please refer to the
+[documentation for a release](https://github.com/xenserver/docker-machine-driver-xenserver/releases).
+
 # Installation from source
 Following the installation of Golang and Docker Machine, you can install the
 docker-machine-xenserver-driver:
