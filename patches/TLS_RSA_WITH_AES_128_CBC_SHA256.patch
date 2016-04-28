@@ -1,0 +1,76 @@
+From 9d771b79c7bfa8db4a4a0075c72608f7d987b598 Mon Sep 17 00:00:00 2001
+From: Phus Lu <phuslu@hotmail.com>
+Date: Tue, 22 Mar 2016 02:56:41 +0800
+Subject: [PATCH] crypto/tls: add
+ TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256/TLS_RSA_WITH_AES_128_CBC_SHA256/TLS_RSA_WITH_AES_256_CBC_SHA256
+
+---
+ src/crypto/tls/cipher_suites.go | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/src/crypto/tls/cipher_suites.go b/src/crypto/tls/cipher_suites.go
+index e69f5f9..d544d4e 100644
+--- a/src/crypto/tls/cipher_suites.go
++++ b/src/crypto/tls/cipher_suites.go
+@@ -11,6 +11,7 @@ import (
+ 	"crypto/hmac"
+ 	"crypto/rc4"
+ 	"crypto/sha1"
++	"crypto/sha256"
+ 	"crypto/x509"
+ 	"hash"
+ )
+@@ -82,6 +83,7 @@ var cipherSuites = []*cipherSuite{
+ 	{TLS_ECDHE_RSA_WITH_RC4_128_SHA, 16, 20, 0, ecdheRSAKA, suiteECDHE | suiteDefaultOff, cipherRC4, macSHA1, nil},
+ 	{TLS_ECDHE_ECDSA_WITH_RC4_128_SHA, 16, 20, 0, ecdheECDSAKA, suiteECDHE | suiteECDSA | suiteDefaultOff, cipherRC4, macSHA1, nil},
+ 	{TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, 16, 20, 16, ecdheRSAKA, suiteECDHE, cipherAES, macSHA1, nil},
++	{TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256, 16, 32, 16, ecdheRSAKA, suiteECDHE, cipherAES, macSHA256, nil},
+ 	{TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA, 16, 20, 16, ecdheECDSAKA, suiteECDHE | suiteECDSA, cipherAES, macSHA1, nil},
+ 	{TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA, 32, 20, 16, ecdheRSAKA, suiteECDHE, cipherAES, macSHA1, nil},
+ 	{TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA, 32, 20, 16, ecdheECDSAKA, suiteECDHE | suiteECDSA, cipherAES, macSHA1, nil},
+@@ -90,6 +92,8 @@ var cipherSuites = []*cipherSuite{
+ 	{TLS_RSA_WITH_RC4_128_SHA, 16, 20, 0, rsaKA, suiteDefaultOff, cipherRC4, macSHA1, nil},
+ 	{TLS_RSA_WITH_AES_128_CBC_SHA, 16, 20, 16, rsaKA, 0, cipherAES, macSHA1, nil},
+ 	{TLS_RSA_WITH_AES_256_CBC_SHA, 32, 20, 16, rsaKA, 0, cipherAES, macSHA1, nil},
++	{TLS_RSA_WITH_AES_128_CBC_SHA256, 16, 32, 16, rsaKA, 0, cipherAES, macSHA256, nil},
++	{TLS_RSA_WITH_AES_256_CBC_SHA256, 32, 32, 16, rsaKA, 0, cipherAES, macSHA256, nil},
+ 	{TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA, 24, 20, 8, ecdheRSAKA, suiteECDHE, cipher3DES, macSHA1, nil},
+ 	{TLS_RSA_WITH_3DES_EDE_CBC_SHA, 24, 20, 8, rsaKA, 0, cipher3DES, macSHA1, nil},
+ }
+@@ -128,6 +132,19 @@ func macSHA1(version uint16, key []byte) macFunction {
+ 	return tls10MAC{hmac.New(sha1.New, key)}
+ }
+ 
++// macSHA256 returns a macFunction for the given protocol version.
++func macSHA256(version uint16, key []byte) macFunction {
++	if version == VersionSSL30 {
++		mac := ssl30MAC{
++			h:   sha256.New(),
++			key: make([]byte, len(key)),
++		}
++		copy(mac.key, key)
++		return mac
++	}
++	return tls10MAC{hmac.New(sha256.New, key)}
++}
++
+ type macFunction interface {
+ 	Size() int
+ 	MAC(digestBuf, seq, header, data []byte) []byte
+@@ -270,6 +287,8 @@ const (
+ 	TLS_RSA_WITH_3DES_EDE_CBC_SHA           uint16 = 0x000a
+ 	TLS_RSA_WITH_AES_128_CBC_SHA            uint16 = 0x002f
+ 	TLS_RSA_WITH_AES_256_CBC_SHA            uint16 = 0x0035
++	TLS_RSA_WITH_AES_128_CBC_SHA256         uint16 = 0x003c
++	TLS_RSA_WITH_AES_256_CBC_SHA256         uint16 = 0x003d
+ 	TLS_RSA_WITH_AES_128_GCM_SHA256         uint16 = 0x009c
+ 	TLS_RSA_WITH_AES_256_GCM_SHA384         uint16 = 0x009d
+ 	TLS_ECDHE_ECDSA_WITH_RC4_128_SHA        uint16 = 0xc007
+@@ -279,6 +298,7 @@ const (
+ 	TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA     uint16 = 0xc012
+ 	TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA      uint16 = 0xc013
+ 	TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA      uint16 = 0xc014
++	TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256   uint16 = 0xc027
+ 	TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256   uint16 = 0xc02f
+ 	TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 uint16 = 0xc02b
+ 	TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384   uint16 = 0xc030
