@@ -4,6 +4,7 @@ build:
 	go build ./...
 
 .PHONY: install
+	go get ./...
 	go install ./...
 
 .PHONY: clean
@@ -17,9 +18,9 @@ clean:
 
 .PHONY: release
 release:
+	go get ./...
 	for arch in 386 amd64 ; do \
 		for os in darwin linux ; do \
-			GOOS=$$os GOARCH=$$arch go tool dist install pkg/runtime ; \
 			GOOS=$$os GOARCH=$$arch go build -o docker-machine-driver-xenserver_$$os-$$arch ; \
 		done \
 	done
