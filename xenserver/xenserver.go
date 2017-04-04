@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -325,6 +326,13 @@ func (d *Driver) Create() error {
 	var sr *xsclient.SR
 	if d.SR == "" {
 		sr, err = c.GetDefaultSR()
+		if sr.Ref == "OpaqueRef:NULL" {
+			err := errors.New("No default SR found. Please configure a " +
+				"default or specify the SR explicitly using " +
+				"--xenserver-sr-label.")
+			log.Errorf("%v", err)
+			return err
+		}
 	} else {
 		sr, err = c.GetUniqueSRByNameLabel(d.SR)
 	}
