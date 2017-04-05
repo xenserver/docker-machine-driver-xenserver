@@ -2,7 +2,7 @@
 
 # docker-machine-driver-xenserver
 This is the XenServer driver plugin for Docker Machine. It allows the
-orchestration of machines on Citrix XenServer.
+orchestration of machines on Citrix XenServer 6.5SP1 and later.
 
 # Installation from binary
 Please refer to the
