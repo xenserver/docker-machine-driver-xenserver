@@ -14,10 +14,12 @@ deploy:
     secure: hLMuZInAJWJuDJDgw7vhAZkalorCu4VL675kwaDbtWgNPNP1UE9oUg25PP6Lri35/iogfTneW411plG+LVOSE7403MusYURZiebS4ffRqvCR/xOtM4hT417fae/+tIYjayEc8V/cJDbEGqkzB9YcyH7FOSC2afpuf5ZZYMiowoWuB65Hxhkqa42UMEJ6TtlqarnoExr8wfiFWFxCTwUJ/vgAXYI/tVvmTPWv+yhm2xqsa5B+V+7lQOZY2asnnxp0XFPVF7UMwJbwi+fHXiOrkvIcRlhagk35RUSgpTDxPk1YHtqv8ReykuTbWf5UmapSBQZEae7EVZGeuRmPPLEE+3uALgztAwi+hI448GQuQcNKB4EsTS+X3wBYLgoa7Co98RYYvsIDlwM0aH8wJCclxPGXatUv5lxfKyn3bf8Ig1N8qaVrxyyiq7TLStMfS4h2qVsGBytDZcKq9chO84SWdIZsMJLm8Ujs/1bkFjurScMiMj/l8lxzQy1OVYpAayjQN4rUBzGT2Oz3i7U6C8zHA0ji/abHZm2Gp7C4c7WRgmTjYvv7n75xVq7UHfGqJrVgBAr5N+X4FAfo3nb62IG+vY5M+PBOdR5uyC5Sr1Ys2aY32YNnqMPPRTjTUdsgUtn0uJoR2CF4hOGY/LNb7LkNLTExuq8KFpN4XcG8EIwaQIM=
   skip_cleanup: true
   file:
-  - docker-machine-driver-xenserver_darwin-386
-  - docker-machine-driver-xenserver_darwin-amd64
-  - docker-machine-driver-xenserver_linux-386
-  - docker-machine-driver-xenserver_linux-amd64
+  - docker-machine-driver-xenserver_darwin-386.tar.gz
+  - docker-machine-driver-xenserver_darwin-amd64.tar.gz
+  - docker-machine-driver-xenserver_linux-386.tar.gz
+  - docker-machine-driver-xenserver_linux-amd64.tar.gz
+  - docker-machine-driver-xenserver_windows-386.zip
+  - docker-machine-driver-xenserver_windows-amd64.zip
   on:
-    repo: xenserver/docker-machine-driver-xenserver
+    repo: robertbreker/docker-machine-driver-xenserver
     tags: true
