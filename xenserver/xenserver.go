@@ -30,7 +30,6 @@ import (
 const (
 	isoFilename         = "boot2docker.iso"
 	tarFilename         = "boot2docker.tar"
-	osTemplateLabelName = "Other install media"
 	B2D_USER            = "docker"
 	B2D_PASS            = "tcuser"
 )
@@ -38,22 +37,23 @@ const (
 type Driver struct {
 	*drivers.BaseDriver
 
-	Server         string
-	Username       string
-	Password       string
-	Boot2DockerURL string
-	CPU            uint
-	Memory         uint
-	DiskSize       uint
-	SR             string
-	Network        string
-	Host           string
-	ISO            string
-	TAR            string
-	UploadTimeout  uint
-	WaitTimeout    uint
-	CaCertPath     string
-	PrivateKeyPath string
+	Server              string
+	Username            string
+	Password            string
+	Boot2DockerURL      string
+	CPU                 uint
+	Memory              uint
+	DiskSize            uint
+	SR                  string
+	Network             string
+	Host                string
+	ISO                 string
+	TAR                 string
+	UploadTimeout       uint
+	WaitTimeout         uint
+	CaCertPath          string
+	PrivateKeyPath      string
+	osTemplateLabelName string
 
 	xenAPIClient *XenAPIClient
 }
@@ -127,6 +127,13 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage:  "XenServer wait VM start timeout(seconds)",
 			Value:  30 * 60,
 		},
+                mcnflag.StringFlag{
+                        EnvVar: "XENSERVER_OS_TEMPLATE",
+                        Name:   "xenserver-os-template",
+                        Usage:  "XenServer OS Template Label Name",
+			Value:  "Other install media",
+                },
+
 	}
 }
 
@@ -186,6 +193,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmDiscovery = flags.String("swarm-discovery")
 	d.ISO = d.ResolveStorePath(isoFilename)
 	d.TAR = d.ResolveStorePath(tarFilename)
+	d.osTemplateLabelName = flags.String("xenserver-os-template")
 
 	return nil
 }
@@ -320,72 +328,80 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	log.Infof("Creating ISO VDI...")
-
-	// Get the SR
+	// Only upload ISO image if using Other install media, otherwise use existing VM template
 	var sr *xsclient.SR
-	if d.SR == "" {
-		sr, err = c.GetDefaultSR()
-		if sr.Ref == "OpaqueRef:NULL" {
-			err := errors.New("No default SR found. Please configure a " +
-				"default or specify the SR explicitly using " +
-				"--xenserver-sr-label.")
-			log.Errorf("%v", err)
+	var isoVdi,diskVdi *xsclient.VDI
+	var isoVdiUuid,diskVdiUuid string
+
+	if d.osTemplateLabelName == "Other install media" {
+
+		log.Infof("Creating ISO VDI...")
+
+		// Get the SR
+		if d.SR == "" {
+			sr, err = c.GetDefaultSR()
+			if sr.Ref == "OpaqueRef:NULL" {
+				err := errors.New("No default SR found. Please configure a " +
+					"default or specify the SR explicitly using " +
+					"--xenserver-sr-label.")
+				log.Errorf("%v", err)
+				return err
+			}
+		} else {
+			sr, err = c.GetUniqueSRByNameLabel(d.SR)
+		}
+		if err != nil {
 			return err
 		}
-	} else {
-		sr, err = c.GetUniqueSRByNameLabel(d.SR)
-	}
-	if err != nil {
-		return err
-	}
 
-	isoFileInfo, err := os.Stat(d.ISO)
-	if err != nil {
-		return err
-	}
+		isoFileInfo, err := os.Stat(d.ISO)
+		if err != nil {
+			return err
+		}
 
-	// Create the VDI
-	isoVdi, err := sr.CreateVdi(isoFilename, isoFileInfo.Size())
-	if err != nil {
-		log.Errorf("Unable to create ISO VDI '%s': %v", isoFilename, err)
-		return err
-	}
+		// Create the VDI
+		isoVdi, err = sr.CreateVdi(isoFilename, isoFileInfo.Size())
+		if err != nil {
+			log.Errorf("Unable to create ISO VDI '%s': %v", isoFilename, err)
+			return err
+		}
 
-	// Import the VDI
-	if err = d.importVdi(isoVdi, d.ISO, time.Duration(d.UploadTimeout)*time.Second); err != nil {
-		return err
-	}
+		// Import the VDI
+		if err = d.importVdi(isoVdi, d.ISO, time.Duration(d.UploadTimeout)*time.Second); err != nil {
+			return err
+		}
 
-	isoVdiUuid, err := isoVdi.GetUuid()
-	if err != nil {
-		return err
-	}
+		isoVdiUuid, err = isoVdi.GetUuid()
+		if err != nil {
+			return err
+		}
 
-	log.Infof("Creating Disk VDI...")
-	err = d.generateDiskImage()
-	if err != nil {
-		return err
-	}
+		log.Infof("Creating Disk VDI...")
+		err = d.generateDiskImage()
+		if err != nil {
+			return err
+		}
 
-	// Create the VDI
-	diskVdi, err := sr.CreateVdi("bootdocker disk", int64(d.DiskSize)*1024*1024)
-	if err != nil {
-		log.Errorf("Unable to create ISO VDI '%s': %v", "bootdocker disk", err)
-		return err
-	}
-	if err = d.importVdi(diskVdi, d.TAR, time.Duration(d.UploadTimeout)*time.Second); err != nil {
-		return err
-	}
+		// Create the VDI
+		diskVdi, err = sr.CreateVdi("bootdocker disk", int64(d.DiskSize)*1024*1024)
+		if err != nil {
+			log.Errorf("Unable to create ISO VDI '%s': %v", "bootdocker disk", err)
+			return err
+		}
+		if err = d.importVdi(diskVdi, d.TAR, time.Duration(d.UploadTimeout)*time.Second); err != nil {
+			return err
+		}
 
-	diskVdiUuid, err := diskVdi.GetUuid()
-	if err != nil {
-		return err
+		diskVdiUuid, err = diskVdi.GetUuid()
+		if err != nil {
+			return err
+		}
+
 	}
 
 	log.Infof("Creating VM...")
 
-	vm0, err := c.GetUniqueVMByNameLabel(osTemplateLabelName)
+	vm0, err := c.GetUniqueVMByNameLabel(d.osTemplateLabelName)
 	if err != nil {
 		return err
 	}
@@ -407,7 +423,7 @@ func (d *Driver) Create() error {
 	}
 
 	otherConfig := map[string]string{
-		"base_template_name":     osTemplateLabelName,
+		"base_template_name":     d.osTemplateLabelName,
 		"install-methods":        "cdrom,nfs,http,ftp",
 		"linux_template":         "true",
 		"mac_seed":               vmMacSeed,
@@ -463,26 +479,28 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	log.Infof("Add ISO VDI to VM...")
-	diskVdi, err = c.GetVdiByUuid(isoVdiUuid)
-	if err != nil {
-		return err
-	}
+	if d.osTemplateLabelName == "Other install media" {
+		log.Infof("Add ISO VDI to VM...")
+		diskVdi, err = c.GetVdiByUuid(isoVdiUuid)
+		if err != nil {
+			return err
+		}
 
-	err = vm.ConnectVdi(diskVdi, xsclient.Disk, "0")
-	if err != nil {
-		return err
-	}
+		err = vm.ConnectVdi(diskVdi, xsclient.Disk, "0")
+		if err != nil {
+			return err
+		}
 
-	log.Infof("Add Disk VDI to VM...")
-	diskVdi, err = c.GetVdiByUuid(diskVdiUuid)
-	if err != nil {
-		return err
-	}
+		log.Infof("Add Disk VDI to VM...")
+		diskVdi, err = c.GetVdiByUuid(diskVdiUuid)
+		if err != nil {
+			return err
+		}
 
-	err = vm.ConnectVdi(diskVdi, xsclient.Disk, "1")
-	if err != nil {
-		return err
+		err = vm.ConnectVdi(diskVdi, xsclient.Disk, "1")
+		if err != nil {
+			return err
+		}
 	}
 
 	log.Infof("Add Network to VM...")
