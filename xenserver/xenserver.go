@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -133,6 +134,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
                         Usage:  "XenServer OS Template Label Name",
 			Value:  "Other install media",
                 },
+                mcnflag.StringFlag{
+                        EnvVar: "XENSERVER_OS_USERNAME",
+                        Name:   "xenserver-os-username",
+                        Usage:  "XenServer Username used to SSH into guest OS",
+                        Value:  B2D_USER,
+                },
 
 	}
 }
@@ -174,7 +181,7 @@ func (d *Driver) DriverName() string {
 }
 
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
-	d.SSHUser = B2D_USER
+	d.SSHUser = flags.String("xenserver-os-username")
 	d.SSHPort = 22
 	d.Server = flags.String("xenserver-server")
 	d.Username = flags.String("xenserver-username")
@@ -333,26 +340,26 @@ func (d *Driver) Create() error {
 	var isoVdi,diskVdi *xsclient.VDI
 	var isoVdiUuid,diskVdiUuid string
 
+        // Get the SR
+        if d.SR == "" {
+		sr, err = c.GetDefaultSR()
+		if sr.Ref == "OpaqueRef:NULL" {
+			err := errors.New("No default SR found. Please configure a " +
+                                        "default or specify the SR explicitly using " +
+                                        "--xenserver-sr-label.")
+			log.Errorf("%v", err)
+                        return err
+                }
+        } else {
+		sr, err = c.GetUniqueSRByNameLabel(d.SR)
+        }
+        if err != nil {
+		return err
+        }
+
 	if d.osTemplateLabelName == "Other install media" {
 
 		log.Infof("Creating ISO VDI...")
-
-		// Get the SR
-		if d.SR == "" {
-			sr, err = c.GetDefaultSR()
-			if sr.Ref == "OpaqueRef:NULL" {
-				err := errors.New("No default SR found. Please configure a " +
-					"default or specify the SR explicitly using " +
-					"--xenserver-sr-label.")
-				log.Errorf("%v", err)
-				return err
-			}
-		} else {
-			sr, err = c.GetUniqueSRByNameLabel(d.SR)
-		}
-		if err != nil {
-			return err
-		}
 
 		isoFileInfo, err := os.Stat(d.ISO)
 		if err != nil {
@@ -397,6 +404,75 @@ func (d *Driver) Create() error {
 			return err
 		}
 
+	} else {
+                log.Infof("Creating Config Drive...")
+
+		pubKey, err := ioutil.ReadFile(d.publicSSHKeyPath())
+		if err != nil {
+			return err
+		}
+		userdatatext := `#cloud-config
+ssh_authorized_keys:
+  - ` + string(pubKey)
+
+		fakeUuid, err := pseudoUuid()
+		if err != nil {
+			return err
+		}
+
+		metadatatext := `{ "uuid": "` + fakeUuid + `"}`
+
+		tempDir := d.ResolveStorePath("configdrive")
+
+		//Create the folder structure inside the temp folder
+		path := filepath.Join(tempDir, "openstack", "latest")
+		os.MkdirAll(path, os.ModePerm)
+		f, err := os.OpenFile(filepath.Join(path, "user_data"), os.O_WRONLY|os.O_CREATE, 0666)
+		if err != nil {
+                        log.Errorf("Unable to open user_data config drive file '%s': %v", path, err)
+			return err
+		}
+		io.WriteString(f, userdatatext)
+		f.Close()
+
+		fmetadata, err := os.OpenFile(filepath.Join(path, "meta_data.json"), os.O_WRONLY|os.O_CREATE, 0666)
+                if err != nil {
+                        log.Errorf("Unable to open meta_data.json config drive file '%s': %v", path, err)
+                        return err
+                }
+                io.WriteString(fmetadata, metadatatext)
+                fmetadata.Close()
+
+		configIsoFilename := d.ResolveStorePath("configdrive.iso")
+		cmd := exec.Command("/usr/bin/mkisofs", "-R", "-V", "config-2", "-o", configIsoFilename, tempDir)
+		err = cmd.Run()
+		if err != nil {
+			log.Errorf("Unable to create ConfigDrive ISO '%s': %v", configIsoFilename, err)
+			return err
+		}
+
+		configIsoFileInfo, err := os.Stat(configIsoFilename)
+		if err != nil {
+			return err
+		}
+
+		// Create the VDI
+		isoVdi, err = sr.CreateVdi(configIsoFilename, configIsoFileInfo.Size())
+		if err != nil {
+			log.Errorf("Unable to create ConfigDrive ISO VDI '%s': %v", configIsoFilename, err)
+			return err
+		}
+
+		// Import the VDI
+	        log.Infof("Starting import of ConfigDrive VDI '%s'...", configIsoFilename)
+		if err = d.importVdi(isoVdi, configIsoFilename, time.Duration(d.UploadTimeout)*time.Second); err != nil {
+			return err
+		}
+
+		isoVdiUuid, err = isoVdi.GetUuid()
+		if err != nil {
+			return err
+		}
 	}
 
 	log.Infof("Creating VM...")
@@ -501,6 +577,17 @@ func (d *Driver) Create() error {
 		if err != nil {
 			return err
 		}
+	} else {
+		log.Infof("Add ConfigDrive ISO VDI to VM...")
+                diskVdi, err = c.GetVdiByUuid(isoVdiUuid)
+                if err != nil {
+                        return err
+                }
+
+                err = vm.ConnectVdi(diskVdi, xsclient.Disk, "")
+                if err != nil {
+                        return err
+                }
 	}
 
 	log.Infof("Add Network to VM...")
