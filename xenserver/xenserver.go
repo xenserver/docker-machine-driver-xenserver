@@ -55,6 +55,7 @@ type Driver struct {
 	CaCertPath          string
 	PrivateKeyPath      string
 	osTemplateLabelName string
+	CoreosConfigDrive   bool
 
 	xenAPIClient *XenAPIClient
 }
@@ -140,6 +141,11 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
                         Usage:  "XenServer Username used to SSH into guest OS",
                         Value:  B2D_USER,
                 },
+                mcnflag.BoolFlag{
+                        EnvVar: "XENSERVER_COREOS_CONFIGDRIVE",
+                        Name:   "xenserver-coreos-configdrive",
+                        Usage:  "XenServer Enable CoreOS specific ConfigDrive (requires xscontainer supplemental pack)",
+                },
 
 	}
 }
@@ -201,6 +207,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.ISO = d.ResolveStorePath(isoFilename)
 	d.TAR = d.ResolveStorePath(tarFilename)
 	d.osTemplateLabelName = flags.String("xenserver-os-template")
+	d.CoreosConfigDrive = flags.Bool("xenserver-coreos-configdrive")
 
 	return nil
 }
@@ -337,7 +344,6 @@ func (d *Driver) Create() error {
 
 	// Only upload ISO image if using Other install media, otherwise use existing VM template
 	var sr *xsclient.SR
-	var isoVdi,diskVdi *xsclient.VDI
 	var isoVdiUuid,diskVdiUuid string
 
         // Get the SR
@@ -367,7 +373,7 @@ func (d *Driver) Create() error {
 		}
 
 		// Create the VDI
-		isoVdi, err = sr.CreateVdi(isoFilename, isoFileInfo.Size())
+		isoVdi, err := sr.CreateVdi(isoFilename, isoFileInfo.Size())
 		if err != nil {
 			log.Errorf("Unable to create ISO VDI '%s': %v", isoFilename, err)
 			return err
@@ -390,7 +396,7 @@ func (d *Driver) Create() error {
 		}
 
 		// Create the VDI
-		diskVdi, err = sr.CreateVdi("bootdocker disk", int64(d.DiskSize)*1024*1024)
+		diskVdi, err := sr.CreateVdi("bootdocker disk", int64(d.DiskSize)*1024*1024)
 		if err != nil {
 			log.Errorf("Unable to create ISO VDI '%s': %v", "bootdocker disk", err)
 			return err
@@ -404,75 +410,6 @@ func (d *Driver) Create() error {
 			return err
 		}
 
-	} else {
-                log.Infof("Creating Config Drive...")
-
-		pubKey, err := ioutil.ReadFile(d.publicSSHKeyPath())
-		if err != nil {
-			return err
-		}
-		userdatatext := `#cloud-config
-ssh_authorized_keys:
-  - ` + string(pubKey)
-
-		fakeUuid, err := pseudoUuid()
-		if err != nil {
-			return err
-		}
-
-		metadatatext := `{ "uuid": "` + fakeUuid + `"}`
-
-		tempDir := d.ResolveStorePath("configdrive")
-
-		//Create the folder structure inside the temp folder
-		path := filepath.Join(tempDir, "openstack", "latest")
-		os.MkdirAll(path, os.ModePerm)
-		f, err := os.OpenFile(filepath.Join(path, "user_data"), os.O_WRONLY|os.O_CREATE, 0666)
-		if err != nil {
-                        log.Errorf("Unable to open user_data config drive file '%s': %v", path, err)
-			return err
-		}
-		io.WriteString(f, userdatatext)
-		f.Close()
-
-		fmetadata, err := os.OpenFile(filepath.Join(path, "meta_data.json"), os.O_WRONLY|os.O_CREATE, 0666)
-                if err != nil {
-                        log.Errorf("Unable to open meta_data.json config drive file '%s': %v", path, err)
-                        return err
-                }
-                io.WriteString(fmetadata, metadatatext)
-                fmetadata.Close()
-
-		configIsoFilename := d.ResolveStorePath("configdrive.iso")
-		cmd := exec.Command("/usr/bin/mkisofs", "-R", "-V", "config-2", "-o", configIsoFilename, tempDir)
-		err = cmd.Run()
-		if err != nil {
-			log.Errorf("Unable to create ConfigDrive ISO '%s': %v", configIsoFilename, err)
-			return err
-		}
-
-		configIsoFileInfo, err := os.Stat(configIsoFilename)
-		if err != nil {
-			return err
-		}
-
-		// Create the VDI
-		isoVdi, err = sr.CreateVdi(configIsoFilename, configIsoFileInfo.Size())
-		if err != nil {
-			log.Errorf("Unable to create ConfigDrive ISO VDI '%s': %v", configIsoFilename, err)
-			return err
-		}
-
-		// Import the VDI
-	        log.Infof("Starting import of ConfigDrive VDI '%s'...", configIsoFilename)
-		if err = d.importVdi(isoVdi, configIsoFilename, time.Duration(d.UploadTimeout)*time.Second); err != nil {
-			return err
-		}
-
-		isoVdiUuid, err = isoVdi.GetUuid()
-		if err != nil {
-			return err
-		}
 	}
 
 	log.Infof("Creating VM...")
@@ -557,7 +494,7 @@ ssh_authorized_keys:
 
 	if d.osTemplateLabelName == "Other install media" {
 		log.Infof("Add ISO VDI to VM...")
-		diskVdi, err = c.GetVdiByUuid(isoVdiUuid)
+		diskVdi, err := c.GetVdiByUuid(isoVdiUuid)
 		if err != nil {
 			return err
 		}
@@ -578,16 +515,41 @@ ssh_authorized_keys:
 			return err
 		}
 	} else {
-		log.Infof("Add ConfigDrive ISO VDI to VM...")
-                diskVdi, err = c.GetVdiByUuid(isoVdiUuid)
+                pubKey, err := ioutil.ReadFile(d.publicSSHKeyPath())
+                if err != nil {
+                        return err
+                }
+		vmUuid, err := vm.GetUuid()
+                if err != nil {
+                        return err
+                }
+		srUuid,err := sr.GetUuid()
                 if err != nil {
                         return err
                 }
 
-                err = vm.ConnectVdi(diskVdi, xsclient.Disk, "")
-                if err != nil {
-                        return err
-                }
+                if d.CoreosConfigDrive {
+                        err := d.createCoreOSConfigDrive(pubKey, vmUuid, srUuid)
+                        if err != nil {
+                                return err
+                        }
+                } else {
+                        log.Infof("Creating Config Drive...")
+                        isoVdiUuid, err := d.createGenericConfigDrive(pubKey, vmUuid, sr)
+                        if err != nil {
+                                return err
+                        }
+
+			log.Infof("Add ConfigDrive ISO VDI to VM...")
+			diskVdi, err := c.GetVdiByUuid(isoVdiUuid)
+			if err != nil {
+				return err
+			}
+			err = vm.ConnectVdi(diskVdi, xsclient.Disk, "")
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	log.Infof("Add Network to VM...")
@@ -1008,4 +970,102 @@ func pseudoUuid() (string, error) {
 	}
 	uuid := fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 	return uuid, nil
+}
+
+func (d *Driver) createCoreOSConfigDrive(pubKey []byte, vmuuid string, sruuid string) error {
+	userdatatext := `#cloud-config
+hostname: %XSVMNAMETOHOSTNAME%
+coreos:
+  units:
+    # XenServer Linux Guest Agent
+    - name: xe-linux-distribution.service
+      command: start
+      content: |
+        [Unit]
+        Description=XenServer Linux Guest Agent
+        After=docker.service
+
+        [Service]
+        ExecStartPre=/media/configdrive/agent/xe-linux-distribution /var/cache/xe-linux-distribution
+        Environment="XE_UPDATE_GUEST_ATTRS=/media/configdrive/agent/xe-update-guest-attrs"
+        ExecStart=/media/configdrive/agent/xe-daemon
+ssh_authorized_keys:
+  # The following entry will automatically be replaced with a public key
+  # generated by XenServer's container management. The key-entry must exist,
+  # in order to enable container management for this VM.
+  - ssh-rsa %XSCONTAINERRSAPUB%
+  - ` + string(pubKey)
+	hosts, err := d.xenAPIClient.GetHosts()
+	if err != nil {
+		log.Errorf("Could not retrieve hosts in the pool: %s", err)
+		return err
+        }
+        ahost := hosts[0]
+        args := make(map[string]string)
+        args["vmuuid"] = vmuuid
+        args["sruuid"] = sruuid
+        args["configuration"] = userdatatext
+        ahost.CallPlugin("xscontainer","create_config_drive",args)
+
+	return nil
+}
+
+func (d *Driver) createGenericConfigDrive(pubKey []byte, vmUuid string, sr *xsclient.SR) (string, error) {
+	userdatatext := `#cloud-config
+ssh_authorized_keys:
+  - ` + string(pubKey)
+
+        metadatatext := `{ "uuid": "` + vmUuid + `"}`
+
+        tempDir := d.ResolveStorePath("configdrive")
+
+        //Create the folder structure inside the temp folder
+        path := filepath.Join(tempDir, "openstack", "latest")
+        os.MkdirAll(path, os.ModePerm)
+        f, err := os.OpenFile(filepath.Join(path, "user_data"), os.O_WRONLY|os.O_CREATE, 0666)
+        if err != nil {
+		log.Errorf("Unable to open user_data config drive file '%s': %v", path, err)
+		return "", err
+	}
+        io.WriteString(f, userdatatext)
+        f.Close()
+
+	fmetadata, err := os.OpenFile(filepath.Join(path, "meta_data.json"), os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		log.Errorf("Unable to open meta_data.json config drive file '%s': %v", path, err)
+		return "", err
+	}
+	io.WriteString(fmetadata, metadatatext)
+	fmetadata.Close()
+
+	configIsoFilename := d.ResolveStorePath("configdrive.iso")
+	cmd := exec.Command("/usr/bin/mkisofs", "-R", "-V", "config-2", "-o", configIsoFilename, tempDir)
+	err = cmd.Run()
+	if err != nil {
+		log.Errorf("Unable to create ConfigDrive ISO '%s': %v", configIsoFilename, err)
+		return "", err
+	}
+	configIsoFileInfo, err := os.Stat(configIsoFilename)
+	if err != nil {
+		return "", err
+	}
+
+	// Create the VDI
+	isoVdi, err := sr.CreateVdi(configIsoFilename, configIsoFileInfo.Size())
+	if err != nil {
+		log.Errorf("Unable to create ConfigDrive ISO VDI '%s': %v", configIsoFilename, err)
+		return "", err
+	}
+
+	// Import the VDI
+	log.Infof("Starting import of ConfigDrive VDI '%s'...", configIsoFilename)
+	if err = d.importVdi(isoVdi, configIsoFilename, time.Duration(d.UploadTimeout)*time.Second); err != nil {
+		return "", err
+	}
+
+	isoVdiUuid, err := isoVdi.GetUuid()
+	if err != nil {
+		return "", err
+	}
+	return isoVdiUuid, nil
 }
