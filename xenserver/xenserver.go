@@ -142,10 +142,6 @@ func (d *Driver) GetSSHHostname() (string, error) {
 	return d.GetIP()
 }
 
-func (d *Driver) GetSSHKeyPath() string {
-	return filepath.Join(d.StorePath, "id_rsa")
-}
-
 func (d *Driver) GetSSHPort() (int, error) {
 	if d.SSHPort == 0 {
 		d.SSHPort = 22
@@ -732,7 +728,7 @@ func (d *Driver) setMachineNameIfNotSet() {
 }
 
 func (d *Driver) sshKeyPath() string {
-	return filepath.Join(d.StorePath, "id_rsa")
+	return d.GetSSHKeyPath()
 }
 
 func (d *Driver) publicSSHKeyPath() string {
