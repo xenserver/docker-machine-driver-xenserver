@@ -586,6 +586,7 @@ func (d *Driver) wait(timeout time.Duration) (err error) {
 		}
 
 		addr := fmt.Sprintf("%s:%d", ip, port)
+		d.IPAddress = ip
 		log.Infof("Got VM address(%v), Now waiting for SSH", addr)
 		out <- drivers.WaitForSSH(d)
 	}(ctx, out)
