@@ -43,7 +43,7 @@ docker-machine env mynewmmachine
 | CLI option                        | Environment variable        | Default                      |
 |-----------------------------------|-----------------------------|------------------------------|
 | `--xenserver-vcpu-count`          | `XENSERVER_VCPU_COUNT`      | `1`                          |
-| `--xenserver-memory-size`         | `XENSERVER_MEMORY_SIZE`     | `2048`                       |
+| `--xenserver-memory-size`         | `XENSERVER_MEMORY_SIZE`     | `1024`                       |
 | `--xenserver-disk-size`           | `XENSERVER_DISK_SIZE`       | `5120`                       |
 | `--xenserver-boot2docker-url`     | `XENSERVER_BOOT2DOCKER_URL` | *boot2docker URL*            |
 | `--xenserver-server`              | `XENSERVER_SERVER`          | -                            |
